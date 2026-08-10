@@ -562,3 +562,80 @@ input[type='range'] {
     box-shadow: 0 4px 12px var(--shadow);
   }
 }
+
+/* ------------------------------------------------- combo box detail rows */
+
+.combo__item {
+  display: block;
+}
+
+.combo__title {
+  display: block;
+  font-weight: 500;
+}
+
+.combo__item--firm .combo__title {
+  font-weight: 600;
+}
+
+.combo__detail {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------- map extras */
+
+.btn--wide {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.btn.is-on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+#map.is-picking {
+  cursor: crosshair;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.check input {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+}
+
+.route-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.route-bullet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 4px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+}

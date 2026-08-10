@@ -1,8 +1,8 @@
 # NYC Commute Shed
 
-Drop a pin on a New York office and the map fills in with everywhere you could
-live and still get to work inside a given number of minutes — by subway and on
-foot, or on foot alone.
+Pick a law firm — or any New York address — and the map fills in with everywhere
+you could live and still get to work inside a given number of minutes, by subway
+and on foot or on foot alone.
 
 It is a static web page. There is no server, no API key, and no network call at
 runtime except map tiles and address lookup. The whole routing engine — a
@@ -21,6 +21,9 @@ cd web && python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
+Opening `index.html` straight off the filesystem will not work — browsers block
+web workers and `fetch` on `file://`, so it needs to come off an HTTP server.
+
 To rebuild the data from the current MTA feed:
 
 ```sh
@@ -29,7 +32,45 @@ pip install -r build/requirements.txt
 ```
 
 That downloads the MTA subway GTFS feed and the borough boundaries, and writes
-`web/data/transit-graph.json` (~280 KB) and `web/data/landmask.json` (~28 KB).
+`web/data/transit-graph.json` (~280 KB), `web/data/landmask.json` (~28 KB) and
+`web/data/subway-lines.json` (~50 KB). The firm directory is hand-maintained and
+is not touched by the build.
+
+## Finding your office
+
+Type a firm name and the dropdown offers its New York office with the building
+address underneath: `skad` finds Skadden at One Manhattan West, `mofo` finds
+Morrison Foerster, `cleary` finds One Liberty Plaza. Arrow keys and Enter work.
+Anything that is not a firm falls through to an address search.
+
+The directory in `web/data/law-firms.json` covers the Am Law 100, the Vault 100
+and a long tail of other large New York offices — around 120 firms. **It was
+compiled by hand and is not authoritative.** Firms move, and a stale row puts
+the pin on the wrong building. Two things soften that: the address string is
+treated as the source of truth and re-geocoded when you pick a firm (the stored
+coordinates are only a fallback for when the geocoder is unreachable), and every
+row is a plain JSON object you can correct without a rebuild.
+
+The pin itself only moves when you ask it to — drag it, pick a firm, or press
+**Move pin by clicking** and then click once. An ordinary click on the map pans
+and inspects without re-solving.
+
+## Seeing the subway
+
+**Overlay the subway map** draws every line in the MTA's own route colours, above
+the heat raster, with a route key in the panel. The geometry comes from the
+feed's own `shapes.txt`: for each route the build picks the handful of service
+patterns that between them touch every station that route serves, so branches
+like the A to the Rockaways survive.
+
+The basemap has four styles — Streets, Minimal, Dark, Satellite. Streets is the
+default because it carries road classes, parks and POI names, which is what you
+want when judging a neighbourhood.
+
+Google Maps is not one of the options, and this is a licensing wall rather than
+an oversight: their Maps JavaScript API needs a billable API key, and their
+terms do not permit pulling raw Google tiles into another map library. Streets
+(CARTO Voyager, drawn from OpenStreetMap) is the closest free stand-in.
 
 ## What it actually computes
 
@@ -136,12 +177,15 @@ correct.
 build/     data pipeline (Python)
   build_transit_graph.py   GTFS  -> web/data/transit-graph.json
   build_landmask.py        boroughs -> web/data/landmask.json
+  build_subway_lines.py    GTFS shapes -> web/data/subway-lines.json
   validate_graph.py        known commutes, checked against the built graph
   water_overrides.geojson  hand-drawn water the borough boundary includes
 web/       the app (static, no build step)
+  data/law-firms.json  hand-maintained firm directory -- edit freely
   js/worker.js    routing engine
   js/contour.js   marching squares, ring nesting, simplification
   js/heatlayer.js canvas raster layer
+  js/geocode.js   firm matching + address lookup
   js/export.js    GeoJSON / KML / boundary helpers
   tests/          node web/tests/contour.test.mjs
 ```

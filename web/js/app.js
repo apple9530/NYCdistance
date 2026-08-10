@@ -51,6 +51,10 @@ const dom = {
   seFidelity: el('se-fidelity'),
   seLink: el('se-link'),
   pinHint: el('pin-hint'),
+  dropPin: el('drop-pin'),
+  basemap: el('basemap'),
+  showSubway: el('show-subway'),
+  subwayKey: el('subway-key'),
 };
 
 const state = {
@@ -85,6 +89,8 @@ const map = L.map('map', {
 map.createPane('contours');
 map.getPane('contours').style.zIndex = 450;
 map.getPane('contours').style.pointerEvents = 'none';
+map.createPane('subway');
+map.getPane('subway').style.zIndex = 455;
 map.createPane('labels');
 map.getPane('labels').style.zIndex = 460;
 map.getPane('labels').style.pointerEvents = 'none';
@@ -93,32 +99,74 @@ const CARTO_ATTRIB =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, ' +
   '&copy; <a href="https://carto.com/attributions">CARTO</a> | transit data &copy; MTA';
 
+const ESRI_ATTRIB =
+  'Imagery &copy; Esri, Maxar, Earthstar Geographics | transit data &copy; MTA';
+
+/* Voyager is the default because it is the closest free basemap to the Google
+   look: coloured road classes, parks, water and POI names, rather than the
+   near-blank canvas of Positron. (Google's own tiles are not an option here --
+   the Maps JavaScript API needs a billable key, and their terms do not allow
+   pulling raw tiles into another map library.) */
+const BASEMAPS = {
+  streets: {
+    label: 'Streets',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png',
+    labels: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',
+    attribution: CARTO_ATTRIB,
+    subdomains: 'abcd',
+  },
+  light: {
+    label: 'Minimal',
+    url: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
+    labels: 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
+    attribution: CARTO_ATTRIB,
+    subdomains: 'abcd',
+  },
+  dark: {
+    label: 'Dark',
+    url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+    labels: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',
+    attribution: CARTO_ATTRIB,
+    subdomains: 'abcd',
+  },
+  satellite: {
+    label: 'Satellite',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    labels: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',
+    attribution: ESRI_ATTRIB,
+    subdomains: 'abcd',
+  },
+};
+
 let baseLayer = null;
 let labelLayer = null;
 
-function applyBasemap() {
-  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-  const variant = dark ? 'dark' : 'light';
+function applyBasemap(key) {
+  const spec = BASEMAPS[key] || BASEMAPS.streets;
   if (baseLayer) map.removeLayer(baseLayer);
   if (labelLayer) map.removeLayer(labelLayer);
 
-  baseLayer = L.tileLayer(
-    `https://{s}.basemaps.cartocdn.com/${variant}_nolabels/{z}/{x}/{y}{r}.png`,
-    { attribution: CARTO_ATTRIB, subdomains: 'abcd', maxZoom: 19 }
-  ).addTo(map);
+  baseLayer = L.tileLayer(spec.url, {
+    attribution: spec.attribution,
+    subdomains: spec.subdomains,
+    maxZoom: 19,
+  }).addTo(map);
 
   // Street names sit above the heat raster, which matters when you are trying
   // to trace the boundary onto someone else's map.
-  labelLayer = L.tileLayer(
-    `https://{s}.basemaps.cartocdn.com/${variant}_only_labels/{z}/{x}/{y}{r}.png`,
-    { subdomains: 'abcd', maxZoom: 19, pane: 'labels' }
-  ).addTo(map);
+  labelLayer = L.tileLayer(spec.labels, {
+    subdomains: spec.subdomains,
+    maxZoom: 19,
+    pane: 'labels',
+  }).addTo(map);
 }
 
 // Handy for debugging from the console.
 window.__map = map;
 
-applyBasemap();
+const initialBasemap = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'streets';
+dom.basemap.value = initialBasemap;
+applyBasemap(initialBasemap);
 
 const HeatLayer = createHeatLayer(L);
 const heat = new HeatLayer({ opacity: 1 });
@@ -126,6 +174,69 @@ heat.addTo(map);
 
 const contourGroup = L.layerGroup([], { pane: 'contours' }).addTo(map);
 const stationGroup = L.layerGroup().addTo(map);
+const subwayGroup = L.layerGroup([], { pane: 'subway' });
+
+let subwayLoaded = null;
+
+/** Draw the subway in the MTA's own route colours, above the heat raster. */
+async function loadSubwayLines() {
+  if (subwayLoaded) return subwayLoaded;
+  subwayLoaded = fetch('data/subway-lines.json')
+    .then((res) => {
+      if (!res.ok) throw new Error(`subway-lines.json (${res.status})`);
+      return res.json();
+    })
+    .then((geojson) => {
+      const seen = new Map();
+      for (const feature of geojson.features) {
+        const { route, color, long_name: longName } = feature.properties;
+        const latLngs = feature.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+
+        // A dark casing under the colour keeps every line legible over both the
+        // pale end of the heat ramp and a satellite basemap.
+        L.polyline(latLngs, {
+          pane: 'subway',
+          color: 'rgba(0,0,0,0.45)',
+          weight: 5,
+          opacity: 0.5,
+          interactive: false,
+        }).addTo(subwayGroup);
+
+        L.polyline(latLngs, {
+          pane: 'subway',
+          color,
+          weight: 2.5,
+          opacity: 0.95,
+        })
+          .bindTooltip(`${route} — ${longName}`, { sticky: true })
+          .addTo(subwayGroup);
+
+        // Express variants (6X, 7X, FX) share their parent's colour, so they
+        // ride along on the map but would only clutter the key.
+        if (!seen.has(route) && !/^[0-9A-Z]X$/.test(route)) seen.set(route, color);
+      }
+      renderSubwayKey([...seen.entries()]);
+      return true;
+    })
+    .catch((err) => {
+      setStatus(`Could not load the subway map: ${err.message}`, true);
+      subwayLoaded = null;
+      return false;
+    });
+  return subwayLoaded;
+}
+
+function renderSubwayKey(entries) {
+  dom.subwayKey.innerHTML = '';
+  entries.sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+  for (const [route, color] of entries) {
+    const bullet = document.createElement('span');
+    bullet.className = 'route-bullet';
+    bullet.style.background = color;
+    bullet.textContent = route;
+    dom.subwayKey.append(bullet);
+  }
+}
 
 const officeIcon = L.divIcon({
   className: 'office-pin',
@@ -150,8 +261,27 @@ officeMarker.on('dragend', async () => {
   await setOrigin(p.lat, p.lng, null);
 });
 
+// Clicking the map used to move the office, which made every attempt to pan or
+// inspect the heatmap a re-solve. Now the pin only moves when you drag it, or
+// when you deliberately arm the drop-pin button for a single placement.
+let pinArmed = false;
+
+function setPinArmed(armed) {
+  pinArmed = armed;
+  dom.dropPin.classList.toggle('is-on', armed);
+  dom.dropPin.setAttribute('aria-pressed', String(armed));
+  dom.dropPin.textContent = armed ? 'Click the map…' : 'Move pin by clicking';
+  document.getElementById('map').classList.toggle('is-picking', armed);
+}
+
 map.on('click', async (ev) => {
+  if (!pinArmed) return;
+  setPinArmed(false);
   await setOrigin(ev.latlng.lat, ev.latlng.lng, null);
+});
+
+map.on('keydown', (ev) => {
+  if (ev.originalEvent.key === 'Escape' && pinArmed) setPinArmed(false);
 });
 
 /* ---------------------------------------------------------------- colours */
@@ -210,7 +340,6 @@ function makeColorFor(budget) {
 }
 
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-  applyBasemap();
   refreshRamp();
   if (state.result) render();
 });
@@ -560,6 +689,27 @@ dom.detour.addEventListener('input', () => {
   scheduleSolve();
 });
 
+dom.dropPin.addEventListener('click', () => setPinArmed(!pinArmed));
+
+dom.basemap.addEventListener('change', () => {
+  applyBasemap(dom.basemap.value);
+});
+
+dom.showSubway.addEventListener('change', async () => {
+  if (dom.showSubway.checked) {
+    const ok = await loadSubwayLines();
+    if (!ok) {
+      dom.showSubway.checked = false;
+      return;
+    }
+    subwayGroup.addTo(map);
+    dom.subwayKey.hidden = false;
+  } else {
+    map.removeLayer(subwayGroup);
+    dom.subwayKey.hidden = true;
+  }
+});
+
 dom.panelToggle?.addEventListener('click', () => {
   const hidden = dom.panel.hasAttribute('hidden');
   if (hidden) dom.panel.removeAttribute('hidden');
@@ -571,38 +721,93 @@ dom.panelToggle?.addEventListener('click', () => {
 
 let suggestAbort = null;
 let suggestTimer = null;
+let activeSuggestion = -1;
+let suggestions = [];
 
 function closeSuggestions() {
   dom.suggestions.hidden = true;
   dom.suggestions.innerHTML = '';
+  dom.address.setAttribute('aria-expanded', 'false');
+  dom.address.removeAttribute('aria-activedescendant');
+  activeSuggestion = -1;
+  suggestions = [];
+}
+
+function highlightSuggestion(index) {
+  const items = [...dom.suggestions.children];
+  if (!items.length) return;
+  activeSuggestion = (index + items.length) % items.length;
+  items.forEach((li, i) => {
+    const on = i === activeSuggestion;
+    li.setAttribute('aria-selected', String(on));
+    if (on) {
+      li.scrollIntoView({ block: 'nearest' });
+      dom.address.setAttribute('aria-activedescendant', li.id);
+    }
+  });
+}
+
+async function chooseSuggestion(result) {
+  closeSuggestions();
+  let { lat, lon } = result;
+
+  // The firm directory is hand-maintained, so trust its address over its
+  // coordinates whenever the geocoder can be reached.
+  if (result.kind === 'firm') {
+    setStatus(`Locating ${result.label}…`);
+    const point = await geocode.resolveFirm(result);
+    lat = point.lat;
+    lon = point.lon;
+    if (!point.precise) {
+      setStatus(`Using the stored location for ${result.label} — address lookup was unreachable.`);
+    }
+  }
+
+  map.setView([lat, lon], Math.max(map.getZoom(), 13));
+  await setOrigin(lat, lon, result.label);
 }
 
 function showSuggestions(results) {
   dom.suggestions.innerHTML = '';
+  suggestions = results;
+  activeSuggestion = -1;
+
   if (!results.length) {
     closeSuggestions();
     return;
   }
-  for (const r of results) {
+
+  results.forEach((r, i) => {
     const li = document.createElement('li');
+    li.id = `suggestion-${i}`;
     li.setAttribute('role', 'option');
-    li.textContent = r.label;
-    const source = document.createElement('span');
-    source.className = 'combo__source';
-    source.textContent = r.source;
-    li.append(source);
+    li.setAttribute('aria-selected', 'false');
+    li.className = r.kind === 'firm' ? 'combo__item combo__item--firm' : 'combo__item';
+
+    const title = document.createElement('span');
+    title.className = 'combo__title';
+    title.textContent = r.label;
+    li.append(title);
+
+    // A firm row is only useful if it also shows which building it means.
+    const detail = document.createElement('span');
+    detail.className = 'combo__detail';
+    detail.textContent = r.detail || r.source;
+    li.append(detail);
+
     li.addEventListener('mousedown', (ev) => {
       ev.preventDefault();
-      closeSuggestions();
-      map.setView([r.lat, r.lon], Math.max(map.getZoom(), 13));
-      setOrigin(r.lat, r.lon, r.label);
+      chooseSuggestion(r);
     });
+    li.addEventListener('mousemove', () => highlightSuggestion(i));
     dom.suggestions.append(li);
-  }
+  });
+
   dom.suggestions.hidden = false;
+  dom.address.setAttribute('aria-expanded', 'true');
 }
 
-dom.address.addEventListener('input', () => {
+function runSuggest() {
   clearTimeout(suggestTimer);
   const text = dom.address.value;
   suggestTimer = setTimeout(async () => {
@@ -613,24 +818,51 @@ dom.address.addEventListener('input', () => {
     } catch (err) {
       if (err.name !== 'AbortError') closeSuggestions();
     }
-  }, 220);
+  }, 160);
+}
+
+dom.address.addEventListener('input', runSuggest);
+
+// Clicking into an empty box offers the firm list straight away.
+dom.address.addEventListener('focus', () => {
+  if (dom.address.value.trim().length >= 2 && dom.suggestions.hidden) runSuggest();
 });
 
-dom.address.addEventListener('blur', () => setTimeout(closeSuggestions, 120));
+dom.address.addEventListener('blur', () => setTimeout(closeSuggestions, 150));
 
 dom.address.addEventListener('keydown', async (ev) => {
-  if (ev.key === 'Escape') closeSuggestions();
+  const open = !dom.suggestions.hidden && suggestions.length;
+
+  if (ev.key === 'ArrowDown' && open) {
+    ev.preventDefault();
+    highlightSuggestion(activeSuggestion + 1);
+    return;
+  }
+  if (ev.key === 'ArrowUp' && open) {
+    ev.preventDefault();
+    highlightSuggestion(activeSuggestion - 1);
+    return;
+  }
+  if (ev.key === 'Escape') {
+    closeSuggestions();
+    return;
+  }
   if (ev.key !== 'Enter') return;
+
   ev.preventDefault();
-  closeSuggestions();
+
+  if (open && activeSuggestion >= 0) {
+    await chooseSuggestion(suggestions[activeSuggestion]);
+    return;
+  }
+
   const text = dom.address.value.trim();
   if (!text) return;
+  closeSuggestions();
   setStatus('Looking up that address…');
   try {
     const results = await geocode.search(text);
-    const best = results[0];
-    map.setView([best.lat, best.lon], Math.max(map.getZoom(), 13));
-    await setOrigin(best.lat, best.lon, best.label);
+    await chooseSuggestion(results[0]);
   } catch (err) {
     setStatus(err.message, true);
   }

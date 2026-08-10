@@ -27,18 +27,28 @@
 
         <div class="panel__body">
           <section class="field">
-            <label class="field__label" for="address">Office address</label>
+            <label class="field__label" for="address">Firm or office address</label>
             <div class="combo">
               <input
                 id="address"
                 type="text"
                 autocomplete="off"
                 spellcheck="false"
-                placeholder="e.g. 195 Broadway, Manhattan"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded="false"
+                aria-controls="suggestions"
+                placeholder="Try Skadden, Cleary, or 195 Broadway"
               />
-              <ul class="combo__list" id="suggestions" hidden></ul>
+              <ul class="combo__list" id="suggestions" role="listbox" hidden></ul>
             </div>
-            <p class="field__hint" id="pin-hint">Or click anywhere on the map to move the pin.</p>
+            <p class="field__hint" id="pin-hint">
+              Am Law 100 and Vault 100 New York offices are in the list. Drag the pin to nudge
+              it, or:
+            </p>
+            <button type="button" id="drop-pin" class="btn btn--wide" aria-pressed="false">
+              Move pin by clicking
+            </button>
           </section>
 
           <section class="field">
@@ -95,6 +105,21 @@
               </p>
             </div>
           </details>
+
+          <section class="field">
+            <span class="field__label">Map</span>
+            <select id="basemap" aria-label="Basemap style">
+              <option value="streets">Streets</option>
+              <option value="light">Minimal</option>
+              <option value="dark">Dark</option>
+              <option value="satellite">Satellite</option>
+            </select>
+            <label class="check">
+              <input type="checkbox" id="show-subway" />
+              <span>Overlay the subway map</span>
+            </label>
+            <div class="route-key" id="subway-key" hidden></div>
+          </section>
 
           <section class="legend" id="legend" hidden>
             <h2 class="legend__title">Travel time to the office</h2>
