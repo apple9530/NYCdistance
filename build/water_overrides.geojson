@@ -1,0 +1,40 @@
+{
+  "type": "FeatureCollection",
+  "note": "The city's borough boundary runs around the outside of Jamaica Bay, so the bay reads as land in a naive rasterisation. These hand-drawn polygons cover its open water while staying clear of Broad Channel, Hamilton Beach, Floyd Bennett Field and the Rockaway peninsula. Edit and re-run build_landmask.py to adjust.",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Jamaica Bay - west lobe" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-73.884, 40.608],
+          [-73.878, 40.622],
+          [-73.858, 40.638],
+          [-73.842, 40.646],
+          [-73.832, 40.634],
+          [-73.826, 40.612],
+          [-73.836, 40.598],
+          [-73.868, 40.598],
+          [-73.884, 40.608]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Jamaica Bay - east lobe (Grassy Bay)" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-73.812, 40.606],
+          [-73.808, 40.622],
+          [-73.796, 40.630],
+          [-73.786, 40.624],
+          [-73.784, 40.608],
+          [-73.800, 40.601],
+          [-73.812, 40.606]
+        ]]
+      }
+    }
+  ]
+}

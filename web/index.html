@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NYC Commute Shed &mdash; where could you live?</title>
+    <meta
+      name="description"
+      content="Drop a pin on a New York office and see every place you could live within a given commute, by subway or on foot."
+    />
+    <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗽</text></svg>"
+    />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="panel" id="panel">
+        <header class="panel__head">
+          <h1>Commute shed</h1>
+          <p class="panel__sub">
+            Everywhere you could live and still get to the office in time.
+          </p>
+        </header>
+
+        <div class="panel__body">
+          <section class="field">
+            <label class="field__label" for="address">Office address</label>
+            <div class="combo">
+              <input
+                id="address"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="e.g. 195 Broadway, Manhattan"
+              />
+              <ul class="combo__list" id="suggestions" hidden></ul>
+            </div>
+            <p class="field__hint" id="pin-hint">Or click anywhere on the map to move the pin.</p>
+          </section>
+
+          <section class="field">
+            <span class="field__label">How you travel</span>
+            <div class="segmented" role="radiogroup" aria-label="Travel mode">
+              <button type="button" role="radio" aria-checked="true" data-mode="transit" class="is-on">
+                Subway&nbsp;+&nbsp;walk
+              </button>
+              <button type="button" role="radio" aria-checked="false" data-mode="walk">
+                Walk only
+              </button>
+            </div>
+          </section>
+
+          <section class="field">
+            <label class="field__label" for="budget">
+              Commute budget
+              <output id="budget-value" for="budget">45 min</output>
+            </label>
+            <input id="budget" type="range" min="5" max="90" step="5" value="45" />
+          </section>
+
+          <section class="field" id="window-field">
+            <label class="field__label" for="window">When you travel</label>
+            <select id="window"></select>
+            <p class="field__hint">
+              Service levels differ a lot by hour &mdash; late nights are a different city.
+            </p>
+          </section>
+
+          <details class="advanced">
+            <summary>Fine tuning</summary>
+            <div class="advanced__body">
+              <label class="field__label" for="max-walk">
+                Longest walk to a station
+                <output id="max-walk-value">15 min</output>
+              </label>
+              <input id="max-walk" type="range" min="3" max="30" step="1" value="15" />
+
+              <label class="field__label" for="walk-speed">
+                Walking speed
+                <output id="walk-speed-value">4.8 km/h</output>
+              </label>
+              <input id="walk-speed" type="range" min="3" max="7" step="0.1" value="4.8" />
+
+              <label class="field__label" for="detour">
+                Street detour factor
+                <output id="detour-value">1.25&times;</output>
+              </label>
+              <input id="detour" type="range" min="1" max="1.6" step="0.05" value="1.25" />
+              <p class="field__hint">
+                Streets are never straight lines. 1.25&times; is typical for the Manhattan grid;
+                raise it for winding outer-borough street patterns.
+              </p>
+            </div>
+          </details>
+
+          <section class="legend" id="legend" hidden>
+            <h2 class="legend__title">Travel time to the office</h2>
+            <ul class="legend__scale" id="legend-scale"></ul>
+            <dl class="stats" id="stats"></dl>
+          </section>
+
+          <section class="field" id="export-field" hidden>
+            <span class="field__label">Take the boundary elsewhere</span>
+            <div class="buttons">
+              <button type="button" id="export-geojson" class="btn">GeoJSON</button>
+              <button type="button" id="export-kml" class="btn">KML</button>
+              <button type="button" id="export-coords" class="btn">Copy points</button>
+            </div>
+            <details class="advanced advanced--tight">
+              <summary>Use it on StreetEasy</summary>
+              <div class="advanced__body">
+                <p class="field__hint">
+                  StreetEasy's &ldquo;draw your own boundary&rdquo; tool is mouse-only, so the
+                  practical route is to trace this outline on their map. Only the largest piece is
+                  traceable &mdash; islands and holes cannot be drawn as one shape.
+                </p>
+                <label class="field__label" for="se-piece">Which piece to draw</label>
+                <select id="se-piece"></select>
+                <label class="field__label" for="se-detail">
+                  Corner points
+                  <output id="se-points">60</output>
+                </label>
+                <input id="se-detail" type="range" min="12" max="150" step="1" value="60" />
+                <p class="field__hint" id="se-fidelity">&nbsp;</p>
+                <div class="buttons">
+                  <button type="button" id="se-copy" class="btn">Copy the point list</button>
+                  <button type="button" id="se-trace" class="btn">Show tracing view</button>
+                </div>
+                <label class="field__label" for="se-template">URL pattern (if you know it)</label>
+                <input id="se-template" type="text" spellcheck="false" />
+                <p class="field__hint">
+                  <code>{polygon}</code> is replaced with <code>lat,lon|lat,lon|&hellip;</code>.
+                  Draw any boundary on StreetEasy, look at the address bar, and paste the shape of
+                  that URL here to make the link below correct.
+                </p>
+                <a id="se-link" class="btn btn--link" href="#" target="_blank" rel="noopener">
+                  Open StreetEasy with this boundary
+                </a>
+              </div>
+            </details>
+          </section>
+
+          <p class="status" id="status" role="status">Loading transit data&hellip;</p>
+        </div>
+
+        <footer class="panel__foot">
+          <p id="feed-note">&nbsp;</p>
+          <p>
+            Times are modelled from the MTA schedule, not live service. Walking follows the land,
+            so rivers are barriers &mdash; but bridges and ferries are not included.
+          </p>
+        </footer>
+      </aside>
+
+      <main class="map-wrap">
+        <div id="map"></div>
+        <div class="readout" id="readout" hidden></div>
+        <button class="panel-toggle" id="panel-toggle" type="button" aria-expanded="true">
+          Controls
+        </button>
+      </main>
+    </div>
+
+    <script src="vendor/leaflet/leaflet.js"></script>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
